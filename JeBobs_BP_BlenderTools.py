@@ -37,6 +37,11 @@ class SplitMesh(bpy.types.Operator):
 			self.report({'ERROR'}, "No active mesh object selected")
 			return {'CANCELLED'}
 
+		total_vertices = len(original_mesh.data.vertices)
+		mesh_count = 1
+
+		print(f"Starting mesh splitting. Total vertices: {total_vertices}")
+
 		bpy.ops.object.mode_set(mode='EDIT')
 		bpy.ops.mesh.select_all(action='DESELECT')
 		bpy.ops.object.mode_set(mode='OBJECT')
@@ -61,6 +66,10 @@ class SplitMesh(bpy.types.Operator):
 			new_mesh.rotation_euler = original_mesh.rotation_euler
 			new_mesh.scale = original_mesh.scale
 
+			print(f"Splitting mesh part {mesh_count}. Remaining vertices: {len(original_mesh.data.vertices)}")
+			mesh_count += 1
+
+		print(f"Mesh splitting completed. Created {mesh_count - 1} new meshes")
 		return {'FINISHED'}
 
 	def get_next_identifier(self):
@@ -87,12 +96,18 @@ class BPDeleteLODRenderables(bpy.types.Operator):
 
 	def execute(self, context):
 		objects = bpy.context.scene.objects
+		total_objects = len(objects)
+		deleted_objects = 0
 
-		for obj in objects:
+		for obj in list(objects):
 			renderable_index = get_object_property("renderable_index", obj)
 
 			if renderable_index > 0:
+				print(f"Deleting LOD renderable: {obj.name}")
 				bpy.data.objects.remove(obj)
+				deleted_objects += 1
+
+		print(f"Deleted {deleted_objects}/{total_objects} LOD renderable objects")
 		return {'FINISHED'}
 
 class BPDeleteSharedAssets(bpy.types.Operator):
@@ -103,13 +118,18 @@ class BPDeleteSharedAssets(bpy.types.Operator):
 
 	def execute(self, context):
 		objects = bpy.context.scene.objects
+		total_objects = len(objects)
+		deleted_objects = 0
 
-		for obj in objects:
+		for obj in list(objects):
 			is_shared_asset = get_object_property("is_shared_asset", obj)
 
 			if is_shared_asset > 0:
+				print(f"Deleting shared asset: {obj.name}")
 				bpy.data.objects.remove(obj)
+				deleted_objects += 1
 
+		print(f"Deleted {deleted_objects} shared assets")
 		return {'FINISHED'}
 
 class BPCreateCarEmpties(bpy.types.Operator):
@@ -122,6 +142,9 @@ class BPCreateCarEmpties(bpy.types.Operator):
 			# List of empty names to create
 			empty_names = ["Wheel_FL", "Wheel_FR", "Wheel_RL", "Wheel_RR", "Boost_L1", "Boost_L2", "Boost_R1", "Boost_R2", "Light_BrakeL", "Light_BrakeR", "Light_Brake", "Light_High-BeamL", "Light_High-BeamR", "Light_High-Beam", "Light_BlinkerL", "Light_BlinkerR", "Light_Blinker", "Light_TailL", "Light_TailR", "Light_Tail", "Light_ReversingL", "Light_ReversingR", "Light_Reversing"]
 	
+			total_empties = len(empty_names)
+			created_empties = 0
+
 			# Iterate over the empty names and create an empty for each one
 			for name in empty_names:
 				bpy.ops.object.add(type='EMPTY')
@@ -149,6 +172,7 @@ class BPCreateCarEmpties(bpy.types.Operator):
 					active.matrix_world[0][3] = 1
 				elif name[index] == "L":
 					# If it's "L", set X to -1
+
 					active.matrix_world[0][3] = -1
 
 				# Reversing, taillights, blinkers, brakes, back wheels, and boosts in the back
@@ -166,8 +190,13 @@ class BPCreateCarEmpties(bpy.types.Operator):
 				# Move everything up by one unit (it's too low normally)
 				active.matrix_world[2][3] = active.matrix_world[2][3] + 1
 
+				print(f"Created empty '{name}' at location {active.location}")
+
 				print(name + " Location: " + str(active.matrix_world))
 
+				created_empties += 1
+
+			print(f"Created {created_empties}/{total_empties} car empties")
 			return {'FINISHED'}
 		
 class BPNameFromResourceDB(Operator, ImportHelper):
@@ -209,46 +238,82 @@ class BPNameFromResourceDB(Operator, ImportHelper):
 			return {'CANCELLED'}
 
 		json_data = {}
+		total_json_files = len([f for f in os.listdir(self.directory) if f.endswith(".json")])
+		processed_json_files = 0
+
 		for filename in os.listdir(self.directory):
 			if filename.endswith(".json"):
+				print(f"Loading JSON file ({processed_json_files + 1}/{total_json_files}): {filename}")
 				with open(os.path.join(self.directory, filename), 'r') as json_file:
 					data = json.load(json_file)
 					json_data.update({k.lower(): v for k, v in data.items()})
+				processed_json_files += 1
 		
+		total_materials = len(bpy.data.materials)
+		renamed_materials = 0
+
 		for material in bpy.data.materials:
 			if "_" in material.name:
 				material_id = material.name.replace("_", "").lower()
 				if material_id in json_data:
+					old_name = material.name
 					new_name = json_data[material_id].split("/")[-1]
 					cleaned_name = self.clean_name(new_name)
 					material.name = cleaned_name
-					self.report({'INFO'}, f"Renamed material {material_id} to {cleaned_name}")
+					renamed_materials += 1
+					print(f"Renamed material '{old_name}' to '{cleaned_name}'")
+				else:
+					print(f"Material '{material.name}' not found in Resource DB")
+		print(f"Materials renamed: {renamed_materials}/{total_materials} ({(renamed_materials/total_materials)*100:.2f}%)")
 		
+		total_textures = len(bpy.data.textures)
+		renamed_textures = 0
+
 		for texture in bpy.data.textures:
 			if "_" in texture.name:
 				texture_id = texture.name.replace("_", "").lower()
 				if texture_id in json_data:
+					old_name = texture.name
 					new_name = json_data[texture_id].split("/")[-1]
 					cleaned_name = self.clean_name(new_name)
 					texture.name = cleaned_name
-					self.report({'INFO'}, f"Renamed texture {texture_id} to {cleaned_name}")
+					renamed_textures += 1
+					print(f"Renamed texture '{old_name}' to '{cleaned_name}'")
+				else:
+					print(f"Texture '{texture.name}' not found in Resource DB")
+					
+		if total_textures > 0:
+			print(f"Textures renamed: {renamed_textures}/{total_textures} ({(renamed_textures/total_textures)*100:.2f}%)")
+		else:
+			print("No textures to rename.")
+
+		total_objects = len(bpy.data.objects)
+		renamed_objects = 0
 
 		for obj in bpy.data.objects:
 			if "_" in obj.name:
 				object_id = obj.name.replace("_", "").lower()
 				if object_id in json_data:
+					old_name = obj.name
 					new_name = json_data[object_id].split("/")[-1]
 					cleaned_name = self.clean_name(new_name)
 					obj.name = cleaned_name
-					self.report({'INFO'}, f"Renamed object {object_id} to {cleaned_name}")
+					renamed_objects += 1
+					print(f"Renamed object '{old_name}' to '{cleaned_name}'")
 				else:
 					if "GameExplorerIndex" in obj:
 						game_explorer_index = obj["GameExplorerIndex"]
 						name_by_id = self.find_name_by_id(json_data, game_explorer_index)
 						if name_by_id:
+							old_name = obj.name
 							obj.name = name_by_id
-							self.report({'INFO'}, f"Renamed object by GameExplorerIndex {game_explorer_index} to {name_by_id}")
-
+							renamed_objects += 1
+							print(f"Renamed object '{old_name}' by GameExplorerIndex {game_explorer_index} to '{name_by_id}'")
+						else:
+							print(f"Object '{obj.name}' with GameExplorerIndex {game_explorer_index} not found in Resource DB")
+					else:
+						print(f"Object '{obj.name}' not found in Resource DB")
+		print(f"Objects renamed: {renamed_objects}/{total_objects} ({(renamed_objects/total_objects)*100:.2f}%)")
 		return {'FINISHED'}
 	
 class BPDeletePropParts(bpy.types.Operator):
@@ -266,10 +331,15 @@ class BPDeletePropParts(bpy.types.Operator):
 					objects_to_delete.append(obj)
 					objects_to_delete.extend(obj.children)
 		
-		for obj in objects_to_delete:
-			bpy.data.objects.remove(obj, do_unlink=True)
+		total_objects = len(objects_to_delete)
+		deleted_objects = 0
 
-		self.report({'INFO'}, f"Deleted {len(objects_to_delete)} prop parts")
+		for obj in objects_to_delete:
+			print(f"Deleting prop part: {obj.name}")
+			bpy.data.objects.remove(obj, do_unlink=True)
+			deleted_objects += 1
+
+		print(f"Deleted {deleted_objects} prop parts")
 		return {'FINISHED'}
 	
 class BPDeletePropAlternatives(bpy.types.Operator):
@@ -286,11 +356,16 @@ class BPDeletePropAlternatives(bpy.types.Operator):
 				if obj["prop_type"] == "prop_alternative":
 					objects_to_delete.append(obj)
 					objects_to_delete.extend(obj.children)
+
+		total_objects = len(objects_to_delete)
+		deleted_objects = 0
 		
 		for obj in objects_to_delete:
+			print(f"Deleting prop alternative: {obj.name}")
 			bpy.data.objects.remove(obj, do_unlink=True)
+			deleted_objects += 1
 
-		self.report({'INFO'}, f"Deleted {len(objects_to_delete)} alternative props")
+		print(f"Deleted {deleted_objects} alternative props")
 		return {'FINISHED'}
 
 
@@ -304,16 +379,20 @@ class BPDeleteBackdrops(bpy.types.Operator):
 
 	def execute(self, context):
 		objects_to_delete = set()
+		total_objects = len(bpy.context.scene.objects)
 
 		for obj in bpy.context.scene.objects:
 			if any(substring.lower() in obj.name.lower() for substring in self.name_substrings):
 				objects_to_delete.add(obj)
 				objects_to_delete.update(obj.children)
-		
-		for obj in objects_to_delete:
-			bpy.data.objects.remove(obj, do_unlink=True)
 
-		self.report({'INFO'}, f"Deleted {len(objects_to_delete)} backdrop objects")
+		deleted_objects = 0
+		for obj in objects_to_delete:
+			print(f"Deleting backdrop object: {obj.name}")
+			bpy.data.objects.remove(obj, do_unlink=True)
+			deleted_objects += 1
+
+		print(f"Deleted {deleted_objects} backdrop objects")
 		return {'FINISHED'}
 
 
